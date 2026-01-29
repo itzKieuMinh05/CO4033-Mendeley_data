@@ -1,0 +1,71 @@
+version: "3.8"
+
+# Production override for docker-compose.yml
+# Usage:
+# docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  minio:
+    volumes:
+      - /data/minio:/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+
+  spark-master:
+    environment:
+      - SPARK_DAEMON_MEMORY=1g
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+
+  spark-worker-1:
+    environment:
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=4
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: "4.0"
+
+  spark-worker-2:
+    environment:
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=4
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: "4.0"
+
+  kafka-controller:
+    environment:
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: "1.0"
+
+  kafka-broker-1:
+    environment:
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: "1.0"
+
+  kafka-broker-2:
+    environment:
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: "1.0"

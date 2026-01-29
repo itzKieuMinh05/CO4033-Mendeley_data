@@ -1,0 +1,67 @@
+# Data directories
+data/*
+!data/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Environment files
+.env.local
+.env.production
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Java
+*.class
+*.jar
+!libs/*.jar
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Backup files
+*.bak
+*.backup
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Spark
+derby.log
+metastore_db/
+spark-warehouse/
+
+# Local configuration overrides
+docker-compose.override.yml
+note.md

@@ -1,0 +1,10 @@
+Để cài tool bằng docker, chạy lần lượt các lệnh sau: 
+
+docker-compose build
+docker-compose up -d
+
+Khi tắt:
+docker-compose stop
+
+Mở lại các lần sau: 
+docker-compose start

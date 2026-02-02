@@ -37,7 +37,7 @@ df['control_type'] = df['batch_id'].apply(assign_control)
 
 # Forward/backward fill for time series
 # df = df.fillna(method='ffill').fillna(method='bfill')
-df = df.groupby("batch_id", group_keys=False).apply(lambda x: x.ffill().bfill(), include_groups=False).reset_index(drop=True)
+df = df.groupby("batch_id").apply(lambda g: g.ffill().bfill()).reset_index(drop=True)
 
 # Normalize numeric columns
 sensor_cols = [
@@ -48,9 +48,9 @@ scaler = StandardScaler()
 df[sensor_cols] = scaler.fit_transform(df[sensor_cols])
 
 # Aggregation
-# batch_features = df.groupby(['batch_id', 'control_type'])[sensor_cols].agg(['mean', 'std', 'max'])
-# batch_features.columns = [f"{c[0]}_{c[1]}" for c in batch_features.columns]
-# batch_features = batch_features.reset_index()
+batch_features = df.groupby(['batch_id', 'control_type'])[sensor_cols].agg(['mean', 'std', 'max'])
+batch_features.columns = [f"{c[0]}_{c[1]}" for c in batch_features.columns]
+batch_features = batch_features.reset_index()
 
 # Create output directory
 output_dir = "../../data/processed"
@@ -62,6 +62,6 @@ df.to_csv(f"{output_dir}/processed_timeseries.csv", index=False)
 
 print(f"[OK] Processed {df['batch_id'].nunique()} batches")
 print(f"[OK] Time series data: {df.shape}")
-# print(f"[OK] Batch features: {batch_features.shape}")
+print(f"[OK] Batch features: {batch_features.shape}")
 print(f"\nControl type distribution:")
-# print(batch_features['control_type'].value_counts())
+print(batch_features['control_type'].value_counts())

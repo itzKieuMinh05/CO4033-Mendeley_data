@@ -2,26 +2,7 @@ version: "3.8"
 
 services:
   # =======================
-  # MySQL
-  # =======================
-  mysql:
-    image: mysql:8.0
-    container_name: biopharma-mysql
-    ports:
-      - "3306:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: mysql123
-      MYSQL_DATABASE: mysql_db
-      MYSQL_USER: mysql
-      MYSQL_PASSWORD: mysql123
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./config/gravitino/init-db.sql:/docker-entrypoint-initdb.d/init_db.sql
-    networks:
-      - data-platform
-
-  # =======================
-  # MinIO
+  # MinIO (S3 backend)
   # =======================
   minio:
     image: minio/minio:latest
@@ -31,150 +12,108 @@ services:
       - "9000:9000"
       - "9002:9002"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
     volumes:
       - minio_data:/data
     networks:
       - data-platform
 
-  # =======================
-  # Kafka (KRaft)
-  # =======================
-  kafka-controller:
-    image: confluentinc/cp-kafka:7.7.0
-    container_name: biopharma-kafka-controller
-    environment:
-      KAFKA_PROCESS_ROLES: controller
-      KAFKA_NODE_ID: 1
-      KAFKA_LISTENERS: CONTROLLER://kafka-controller:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
-      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
-    volumes:
-      - kafka_controller_data:/tmp/kraft-combined-logs
-    networks:
-      - data-platform
-
-  kafka-broker-1:
-    image: confluentinc/cp-kafka:7.7.0
-    container_name: biopharma-kafka-broker-1
-    depends_on:
-      - kafka-controller
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: biopharma-kafka
     ports:
       - "9092:9092"
     environment:
-      KAFKA_PROCESS_ROLES: broker
-      KAFKA_NODE_ID: 2
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
-      KAFKA_LISTENERS: PLAINTEXT://kafka-broker-1:29092,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-1:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@biopharma-kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://biopharma-kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CLUSTER_ID: q1Sh-9_ISia_zwGINzRvyQ
     volumes:
-      - kafka_broker1_data:/tmp/kraft-combined-logs
-    networks:
-      - data-platform
-
-  kafka-broker-2:
-    image: confluentinc/cp-kafka:7.7.0
-    container_name: biopharma-kafka-broker-2
-    depends_on:
-      - kafka-controller
-    ports:
-      - "9094:9094"
-    environment:
-      KAFKA_PROCESS_ROLES: broker
-      KAFKA_NODE_ID: 3
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
-      KAFKA_LISTENERS: PLAINTEXT://kafka-broker-2:29094,PLAINTEXT_HOST://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-2:29094,PLAINTEXT_HOST://localhost:9094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
-    volumes:
-      - kafka_broker2_data:/tmp/kraft-combined-logs
+      - kafka_data:/var/lib/kafka/data
     networks:
       - data-platform
 
   # =======================
-  # Spark
+  # Iceberg REST Catalog
+  # =======================
+  iceberg-rest:
+    image: tabulario/iceberg-rest:latest
+    container_name: biopharma-iceberg-rest
+    ports:
+      - "8181:8181"
+    environment:
+      CATALOG_WAREHOUSE: s3://iceberg/warehouse
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      AWS_REGION: us-east-1
+      S3_ENDPOINT: http://minio:9000
+      S3_PATH_STYLE_ACCESS: "true"
+    depends_on:
+      - minio
+    networks:
+      - data-platform
+
+  # =======================
+  # Spark Master
+  # =======================
   spark-master:
     build: ./docker/spark
     container_name: biopharma-spark-master
     ports:
-      - "8080:8080"
       - "7077:7077"
+      - "8080:8080"
     environment:
-      - SPARK_MODE=master
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8080
-      - ICEBERG_VERSION=1.9.2
-      - SPARK_JARS_PACKAGES=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.2,org.apache.hadoop:hadoop-aws:3.3.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5,org.apache.kafka:kafka-clients:3.4.1,org.apache.spark:spark-protobuf_2.12:3.5.5
-      - AWS_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: 7077
+      SPARK_MASTER_WEBUI_PORT: 8080
+      ICEBERG_VERSION: 1.9.2
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      AWS_REGION: us-east-1
     volumes:
-      - ./data:/opt/spark/data
-      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
       - ./scripts:/opt/spark/scripts
-    networks:
-      - data-platform
-
-
-  spark-worker-1:
-    build: ./docker/spark
-    container_name: biopharma-spark-worker-1
-    ports:
-      - "8081:8081"
-    depends_on:
-      - spark-master
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_WEBUI_PORT=8081
-      - SPARK_WORKER_MEMORY=2g
-      - SPARK_WORKER_CORES=2
-      - ICEBERG_VERSION=1.9.2
-      - SPARK_JARS_PACKAGES=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.2,org.apache.hadoop:hadoop-aws:3.3.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5,org.apache.kafka:kafka-clients:3.4.1,org.apache.spark:spark-protobuf_2.12:3.5.5
-      - AWS_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin123
-    volumes:
+      - ./config/spark:/opt/spark/conf
       - ./data:/opt/spark/data
-      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
-      - ./scripts:/opt/spark/scripts
-    networks:
-      - data-platform
-
-
-  spark-worker-2:
-    build: ./docker/spark
-    container_name: biopharma-spark-worker-2
-    ports:
-      - "8082:8082"
-    depends_on:
-      - spark-master
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_WEBUI_PORT=8082
-      - SPARK_WORKER_MEMORY=2g
-      - SPARK_WORKER_CORES=2
-      - ICEBERG_VERSION=1.9.2
-      - SPARK_JARS_PACKAGES=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.2,org.apache.hadoop:hadoop-aws:3.3.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5,org.apache.kafka:kafka-clients:3.4.1,org.apache.spark:spark-protobuf_2.12:3.5.5
-      - AWS_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin123
-    volumes:
-      - ./data:/opt/spark/data
-      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
-      - ./scripts:/opt/spark/scripts
     networks:
       - data-platform
 
   # =======================
-  # Grafana
+  # Spark Worker
+  # =======================
+  spark-worker:
+    build: ./docker/spark
+    container_name: biopharma-spark-worker
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081"
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_WEBUI_PORT: 8081
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
+      ICEBERG_VERSION: 1.9.2
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      AWS_REGION: us-east-1
+    volumes:
+      - ./scripts:/opt/spark/scripts
+      - ./config/spark:/opt/spark/conf
+      - ./data:/opt/spark/data
+    networks:
+      - data-platform
+
+  # =======================
+  # Grafana (Visualization)
   # =======================
   grafana:
     image: grafana/grafana:latest
@@ -185,11 +124,8 @@ services:
       - data-platform
 
 volumes:
-  mysql_data:
   minio_data:
-  kafka_controller_data:
-  kafka_broker1_data:
-  kafka_broker2_data:
+  kafka_data:
 
 networks:
   data-platform:

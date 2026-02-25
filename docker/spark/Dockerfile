@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
-ENV SPARK_VERSION=3.5.5
+ENV SPARK_VERSION=3.5.8
 ENV HADOOP_VERSION=3
 ENV ICEBERG_VERSION=1.9.2
 ENV SPARK_HOME=/opt/spark
@@ -25,10 +25,14 @@ ENV SPARK_JARS_PACKAGES="org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.2
 RUN pip3 install --break-system-packages pyiceberg[s3fs,pyarrow] && pip3 install --break-system-packages protobuf==5.26.1
 
 # Download and install Spark
-RUN wget "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
-    && tar -xzf "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
+COPY spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz /tmp/
+RUN tar -xzf "/tmp/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
     && mv "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" $SPARK_HOME \
-    && rm "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
+    && rm "/tmp/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
+# RUN wget "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
+#     && tar -xzf "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
+#     && mv "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" $SPARK_HOME \
+#     && rm "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
 
 # Download Iceberg jars
 RUN wget "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/${ICEBERG_VERSION}/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar" \

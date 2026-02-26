@@ -8,3 +8,13 @@ docker-compose stop
 
 Mở lại các lần sau: 
 docker-compose start
+
+
+Thứ tự: bronze --> producer || consumer --> silver  
+Kafka: 
+docker exec -it biopharma-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server biopharma-kafka:29092 --create --if-not-exists --topic weather_raw --partitions 1 --replication-factor 1
+docker exec -it biopharma-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server biopharma-kafka:29092 --list
+python scripts/producer.py
+
+Consumer: 
+docker compose exec spark-master spark-submit --master spark://spark-master:7077 scripts/consumer.py

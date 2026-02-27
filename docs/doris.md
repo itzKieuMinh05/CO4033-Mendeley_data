@@ -22,81 +22,85 @@ doris-be:
 docker exec -it doris-fe mysql -h 127.0.0.1 -P 9030 -u root
 
 
-[Hoặc sử dụng web UI: ](http://localhost:8030/Playground/result/bus_db-undefined)
 
 
-3. Tạo database trong doris tên là bus_db và
-   
-   CREATE TABLE bus_gps (
-    `datetime` DATETIME,
-    `vehicle` VARCHAR(20),
-    `date` DATE,
-    `lng` DOUBLE,
-    `lat` DOUBLE,
-    `driver` VARCHAR(50),
-    `speed` DOUBLE,
-    `door_up` BOOLEAN,
-    `door_down` BOOLEAN
+## 3) Create database and weather table in Doris
+```sql
+CREATE DATABASE IF NOT EXISTS weather_db;
+USE weather_db;
+
+CREATE TABLE IF NOT EXISTS weather (
+    `time` DATETIME,
+    `province` VARCHAR(20),
+    `city` VARCHAR(50),
+    `temperature` DOUBLE,
+    `temp_min` DOUBLE,
+    `temp_max` DOUBLE,
+    `humidity` DOUBLE,
+    `feels_like` DOUBLE,
+    `visibility` DOUBLE,
+    `precipitation` DOUBLE,
+    `cloudcover` DOUBLE,
+    `wind_speed` DOUBLE,
+    `wind_gust` DOUBLE,
+    `wind_direction` DOUBLE,
+    `pressure` DOUBLE,
+    `is_day` BOOLEAN,
+    `weather_code` INT,
+    `weather_main` VARCHAR(50),
+    `weather_description` VARCHAR(100),
+    `weather_icon` VARCHAR(20)
 )
-DUPLICATE KEY(`datetime`, `vehicle`)
-DISTRIBUTED BY HASH(`vehicle`) BUCKETS 3
+DUPLICATE KEY(`time`, `province`, `city`)
+DISTRIBUTED BY HASH(`province`) BUCKETS 3
 PROPERTIES (
     "replication_num" = "1"
 );
+```
 
-4. Tạo rountine
+---
 
-
-CREATE ROUTINE LOAD bus_gps_job ON bus_gps
-COLUMNS(datetime, vehicle, date, lng, lat, driver, speed, door_up, door_down)
+## 4) Create Routine Load from Kafka (weather topic)
+```sql
+CREATE ROUTINE LOAD weather_job ON weather
+COLUMNS(
+    time, province, city, temperature, temp_min, temp_max, humidity, feels_like,
+    visibility, precipitation, cloudcover, wind_speed, wind_gust, wind_direction,
+    pressure, is_day, weather_code, weather_main, weather_description, weather_icon
+)
 PROPERTIES
 (
     "format" = "json",
     "max_batch_interval" = "10",
-    "max_batch_rows" = "200100"
+    "max_batch_rows" = "200000"
 )
 FROM KAFKA
 (
-    "kafka_broker_list" = "kafka-broker-1:29092,kafka-broker-2:29094",
-    "kafka_topic" = "bus_gps_raw",
-    "property.group.id" = "doris_gps_consumer_group_v2",
+    "kafka_broker_list" = "kafka:9092",
+    "kafka_topic" = "weather_raw",
+    "property.group.id" = "doris_weather_consumer_group_v1",
     "property.kafka_default_offsets" = "OFFSET_BEGINNING"
 );
+```
 
-5. Kiểm tra routine
-   
-SHOW ROUTINE LOAD FOR bus_gps_job;
+Check status:
+```sql
+SHOW ROUTINE LOAD FOR weather_job;
+```
 
+---
 
-
-6. Tạo external Catalog cho Doris kt nối với Lakehouse
-CREATE CATALOG iceberg PROPERTIES (
-    'type'='iceberg',
-    'iceberg.catalog.type'='rest',
-    'uri'='http://iceberg-rest:8181',
-    'warehouse'='s3a://lake/',
-    's3.endpoint'='http://minio:9000',
-    's3.access_key'='minioadmin',
-    's3.secret_key'='minioadmin123',
-    's3.path_style'='true'
-);
-
-'uri' = 'http://iceberg-rest:8181',
-
-
-
--- 1. Thoát ra ngoài để tránh lỗi session
+## 5) Create external Iceberg catalog (REST + MinIO)
+```sql
 SWITCH internal;
-
--- 2. Xóa catalog cấu hình sai
 DROP CATALOG IF EXISTS iceberg;
 
--- 3. Tạo lại với cấu hình Path Style Access (Bắt buộc cho MinIO)
 CREATE CATALOG iceberg PROPERTIES (
     "type" = "iceberg",
     "iceberg.catalog.type" = "rest",
     "uri" = "http://iceberg-rest:8181",
     "s3.endpoint" = "http://minio:9000",
+    "warehouse" = "s3://iceberg/warehouse",
     "s3.access_key" = "minioadmin",
     "s3.secret_key" = "minioadmin123",
     "s3.region" = "us-east-1",
@@ -104,8 +108,16 @@ CREATE CATALOG iceberg PROPERTIES (
     "s3.connection.ssl.enabled" = "false"
 );
 
-SHOW CREATE CATALOG iceberg
+SHOW CREATE CATALOG iceberg;
+```
 
-SELECT * FROM iceberg.test.bus_gps LIMIT 10;
+---
 
-7.
+## 6) Query weather tables from Iceberg
+```sql
+-- Bronze table (from scripts/bronze.py / scripts/consumer.py)
+SELECT * FROM iceberg.weather.weather_bronze LIMIT 10;
+
+-- Silver layer (if created in weather namespace)
+SELECT * FROM iceberg.weather.weather_silver LIMIT 10;
+```

@@ -29,8 +29,9 @@ docker exec -it doris-fe mysql -h 127.0.0.1 -P 9030 -u root
 CREATE DATABASE IF NOT EXISTS weather_db;
 USE weather_db;
 
-CREATE TABLE IF NOT EXISTS weather (
-    `time` DATETIME,
+DROP TABLE IF EXISTS weather;
+CREATE TABLE weather (
+    `time` VARCHAR(50),
     `province` VARCHAR(20),
     `city` VARCHAR(50),
     `temperature` DOUBLE,
@@ -49,12 +50,16 @@ CREATE TABLE IF NOT EXISTS weather (
     `weather_code` INT,
     `weather_main` VARCHAR(50),
     `weather_description` VARCHAR(100),
-    `weather_icon` VARCHAR(20)
+    `weather_icon` VARCHAR(20),
+    `kafka_time` DATETIME,
+    `load_at` DATETIME
 )
 DUPLICATE KEY(`time`, `province`, `city`)
 DISTRIBUTED BY HASH(`province`) BUCKETS 3
 PROPERTIES (
-    "replication_num" = "1"
+    "replication_num" = "1",
+    "max_error_number" = "50000",
+    "max_filter_ratio" = "0.2"
 );
 ```
 
@@ -66,7 +71,9 @@ CREATE ROUTINE LOAD weather_job ON weather
 COLUMNS(
     time, province, city, temperature, temp_min, temp_max, humidity, feels_like,
     visibility, precipitation, cloudcover, wind_speed, wind_gust, wind_direction,
-    pressure, is_day, weather_code, weather_main, weather_description, weather_icon
+    pressure, is_day, weather_code, weather_main, weather_description, weather_icon,
+    kafka_time = NOW(),
+    load_at = NOW()
 )
 PROPERTIES
 (
@@ -76,7 +83,7 @@ PROPERTIES
 )
 FROM KAFKA
 (
-    "kafka_broker_list" = "kafka:9092",
+    "kafka_broker_list" = "biopharma-kafka:29092",
     "kafka_topic" = "weather_raw",
     "property.group.id" = "doris_weather_consumer_group_v1",
     "property.kafka_default_offsets" = "OFFSET_BEGINNING"
